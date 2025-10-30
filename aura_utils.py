@@ -9,14 +9,22 @@ import google.generativeai as genai
 import datetime
 import os
 
-google_api_key = os.getenv("GOOGLE_API_KEY")
 model = None
-if google_api_key:
-    genai.configure(api_key=google_api_key)
-    model = genai.GenerativeModel('gemini-pro')
+
+def get_model():
+    global model
+    if model is None:
+        google_api_key = os.getenv("GOOGLE_API_KEY")
+        if google_api_key:
+            genai.configure(api_key=google_api_key)
+            model = genai.GenerativeModel('gemini-pro')
+    return model
 
 def summarize_text(text):
     try:
+        model = get_model()
+        if not model:
+            return "Model not initialized. Please check your API key."
         response = model.generate_content(f"Summarize the following text: {text}")
         return response.text
     except Exception as e:
@@ -24,6 +32,9 @@ def summarize_text(text):
 
 def draft_email(prompt):
     try:
+        model = get_model()
+        if not model:
+            return "Model not initialized. Please check your API key."
         response = model.generate_content(f"Draft an email based on the following prompt: {prompt}")
         return response.text
     except Exception as e:

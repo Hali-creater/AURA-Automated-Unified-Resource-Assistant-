@@ -1,7 +1,7 @@
 import requests
 import re
 from datetime import datetime
-from aura_utils import send_email, read_emails, create_calendar_event, get_calendar_events, summarize_text, draft_email, model
+from aura_utils import send_email, read_emails, create_calendar_event, get_calendar_events, summarize_text, draft_email, get_model
 
 class AuraAgent:
     def __init__(self):
@@ -47,6 +47,9 @@ class AuraAgent:
         Respond with a JSON object with two keys: "intent" and "entities".
         """
         try:
+            model = get_model()
+            if not model:
+                return "unknown", {"error": "Model not initialized"}
             response = model.generate_content(prompt)
             # A simple way to parse the JSON from the model's response
             import json
