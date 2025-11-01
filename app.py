@@ -6,25 +6,26 @@ st.title("AURA - Your Virtual Assistant")
 
 # Sidebar for API key configuration
 st.sidebar.header("API Configuration")
-google_api_key = st.sidebar.text_input("Google API Key", type="password")
-gcal_credentials_file = st.sidebar.text_input("Path to Google Calendar Credentials")
+groq_api_key = st.sidebar.text_input("Groq API Key", type="password")
 email_address = st.sidebar.text_input("Email Address")
 email_password = st.sidebar.text_input("Email Password", type="password")
 smtp_server = st.sidebar.text_input("SMTP Server")
 imap_server = st.sidebar.text_input("IMAP Server")
-timezone = st.sidebar.text_input("Timezone", "America/Los_Angeles")
 
 if st.sidebar.button("Save Keys"):
-    os.environ["GOOGLE_API_KEY"] = google_api_key
-    os.environ["GCAL_CREDENTIALS_FILE"] = gcal_credentials_file
+    os.environ["GROQ_API_KEY"] = groq_api_key
     os.environ["EMAIL_ADDRESS"] = email_address
     os.environ["EMAIL_PASSWORD"] = email_password
     os.environ["SMTP_SERVER"] = smtp_server
     os.environ["IMAP_SERVER"] = imap_server
-    os.environ["TIMEZONE"] = timezone
     st.session_state.api_keys_set = True
     st.sidebar.success("API keys saved!")
 
+# Calendar file uploader
+st.sidebar.header("Calendar")
+ics_file = st.sidebar.file_uploader("Upload .ics file", type=["ics"])
+if ics_file:
+    st.session_state.ics_file = ics_file
 
 # Initialize agent and chat if API keys are set
 if 'api_keys_set' in st.session_state and st.session_state.api_keys_set:
@@ -45,7 +46,15 @@ if 'api_keys_set' in st.session_state and st.session_state.api_keys_set:
 
         with st.chat_message("assistant"):
             response = st.session_state.agent.process_command(prompt)
-            st.markdown(response)
+            if "BEGIN:VCALENDAR" in response:
+                st.download_button(
+                    label="Download Event File",
+                    data=response,
+                    file_name="event.ics",
+                    mime="text/calendar",
+                )
+            else:
+                st.markdown(response)
         st.session_state.messages.append({"role": "assistant", "content": response})
 else:
     st.warning("Please configure your API keys in the sidebar to begin.")

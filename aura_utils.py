@@ -2,102 +2,78 @@ import smtplib
 import imaplib
 import email
 from email.mime.text import MIMEText
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
+from groq import Groq
 import os
-import google.generativeai as genai
 import datetime
-import os
 
-model = None
+client = None
 
-def get_model():
-    global model
-    if model is None:
-        google_api_key = os.getenv("GOOGLE_API_KEY")
-        if google_api_key:
-            genai.configure(api_key=google_api_key)
-            model = genai.GenerativeModel('gemini-pro')
-    return model
+def get_groq_client():
+    global client
+    if client is None:
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        if groq_api_key:
+            client = Groq(api_key=groq_api_key)
+    return client
 
 def summarize_text(text):
     try:
-        model = get_model()
-        if not model:
-            return "Model not initialized. Please check your API key."
-        response = model.generate_content(f"Summarize the following text: {text}")
-        return response.text
+        client = get_groq_client()
+        if not client:
+            return "Groq client not initialized. Please check your API key."
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Summarize the following text: {text}",
+                }
+            ],
+            model="llama3-8b-8192",
+        )
+        return chat_completion.choices[0].message.content
     except Exception as e:
         return f"Failed to summarize text: {e}"
 
 def draft_email(prompt):
     try:
-        model = get_model()
-        if not model:
-            return "Model not initialized. Please check your API key."
-        response = model.generate_content(f"Draft an email based on the following prompt: {prompt}")
-        return response.text
+        client = get_groq_client()
+        if not client:
+            return "Groq client not initialized. Please check your API key."
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Draft an email based on the following prompt: {prompt}",
+                }
+            ],
+            model="llama3-8b-8192",
+        )
+        return chat_completion.choices[0].message.content
     except Exception as e:
         return f"Failed to draft email: {e}"
 
-# If modifying these scopes, delete the file token.json.
-SCOPES = ['https://www.googleapis.com/auth/calendar']
+from ics import Calendar, Event
 
-def get_calendar_service():
-    gcal_credentials_file = os.getenv("GCAL_CREDENTIALS_FILE")
-    if not gcal_credentials_file or not os.path.exists(gcal_credentials_file):
-        return None
-
+def get_calendar_events(ics_file):
     try:
-        creds = service_account.Credentials.from_service_account_file(
-            gcal_credentials_file, scopes=SCOPES)
-        return build('calendar', 'v3', credentials=creds)
-    except Exception:
-        return None
-
-def get_calendar_events(max_events=10):
-    service = get_calendar_service()
-    if not service:
-        return ["Google Calendar is not configured. Please check your credentials."]
-    try:
-        now = datetime.datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
-        events_result = service.events().list(calendarId='primary', timeMin=now,
-                                              maxResults=max_events, singleEvents=True,
-                                              orderBy='startTime').execute()
-        events = events_result.get('items', [])
-
-        if not events:
-            return ["No upcoming events found."]
-
+        c = Calendar(ics_file.read().decode('utf-8'))
+        events = sorted(c.events, key=lambda e: e.begin)
         event_list = []
         for event in events:
-            start = event['start'].get('dateTime', event['start'].get('date'))
-            event_list.append(f"{start} - {event['summary']}")
-
+            event_list.append(f"{event.begin.humanize()} - {event.name}")
         return event_list
     except Exception as e:
-        return [f"Failed to get calendar events: {e}"]
-
+        return [f"Failed to read calendar events: {e}"]
 
 def create_calendar_event(summary, start_time, end_time):
-    timezone = os.getenv("TIMEZONE", "America/Los_Angeles")
-    service = get_calendar_service()
-    if not service:
-        return "Google Calendar is not configured. Please check your credentials."
     try:
-        event = {
-            'summary': summary,
-            'start': {
-                'dateTime': start_time,
-                'timeZone': timezone,
-            },
-            'end': {
-                'dateTime': end_time,
-                'timeZone': timezone,
-            },
-        }
-        event = service.events().insert(calendarId='primary', body=event).execute()
-        return f"Event created: {event.get('htmlLink')}"
+        c = Calendar()
+        e = Event()
+        e.name = summary
+        e.begin = start_time
+        e.end = end_time
+        c.events.add(e)
+        return c.serialize()
     except Exception as e:
         return f"Failed to create calendar event: {e}"
 
