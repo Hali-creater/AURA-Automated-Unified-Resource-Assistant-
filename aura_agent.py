@@ -1,7 +1,8 @@
 import requests
 import re
 from datetime import datetime
-from aura_utils import send_email, read_emails, create_calendar_event, get_calendar_events, summarize_text, draft_email, get_model
+from aura_utils import send_email, read_emails, create_calendar_event, get_calendar_events, summarize_text, draft_email, get_groq_client
+import streamlit as st
 
 class AuraAgent:
     def __init__(self):
@@ -47,13 +48,21 @@ class AuraAgent:
         Respond with a JSON object with two keys: "intent" and "entities".
         """
         try:
-            model = get_model()
-            if not model:
-                return "unknown", {"error": "Model not initialized"}
-            response = model.generate_content(prompt)
-            # A simple way to parse the JSON from the model's response
+            client = get_groq_client()
+            if not client:
+                return "unknown", {"error": "Groq client not initialized"}
+            chat_completion = client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    }
+                ],
+                model="llama3-8b-8192",
+            )
+            response_text = chat_completion.choices[0].message.content
             import json
-            parsed_response = json.loads(response.text.strip("```json\n").strip("```"))
+            parsed_response = json.loads(response_text.strip("```json\n").strip("```"))
             return parsed_response.get("intent", "unknown"), parsed_response.get("entities", {})
         except Exception:
             return "unknown", {}
@@ -122,15 +131,17 @@ class AuraAgent:
             start_datetime = parse(f"{date} {start_time}")
             end_datetime = parse(f"{date} {end_time}")
 
-            start_time_rfc = start_datetime.isoformat()
-            end_time_rfc = end_datetime.isoformat()
-
-            return create_calendar_event(summary, start_time_rfc, end_time_rfc)
+            return create_calendar_event(summary, start_datetime, end_datetime)
         except ValueError:
             return "I had trouble understanding the date or time. Please use a clear format like 'tomorrow at 2pm'."
 
     def _handle_read_calendar(self, user_input, **entities):
-        events = get_calendar_events()
+        if 'ics_file' not in st.session_state:
+            return "Please upload an .ics file to read calendar events."
+
+        ics_file = st.session_state.ics_file
+        ics_file.seek(0) # Reset file pointer
+        events = get_calendar_events(ics_file)
         if not events:
             return "No upcoming events found."
         return "Here are your upcoming events:\n- " + "\n- ".join(events)
